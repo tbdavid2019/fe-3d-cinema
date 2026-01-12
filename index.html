@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Particle System</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Orbitron', sans-serif;
+            color: #0ff;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* Vignette & Grid Overlay */
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            background: 
+                radial-gradient(circle, transparent 60%, rgba(0,0,0,0.8) 100%),
+                linear-gradient(to bottom, rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to right, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 40px 40px, 40px 40px;
+            pointer-events: none;
+        }
+
+        /* HUD Elements */
+        .hud {
+            position: absolute;
+            z-index: 3;
+            padding: 20px;
+            font-size: 14px;
+            text-shadow: 0 0 5px #0ff;
+            pointer-events: none;
+        }
+        
+        .top-left { top: 0; left: 0; }
+        .top-right { top: 0; right: 0; text-align: right; }
+        .bottom-left { bottom: 0; left: 0; }
+        .bottom-right { bottom: 0; right: 0; text-align: right; }
+
+        .hud-value {
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 0;
+            transform: scaleX(-1);
+            opacity: 0.5; /* Darken slightly to keep particles visible */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HUD -->
+    <div class="hud top-left">
+        <div>FPS: <span id="fps" class="hud-value">0</span></div>
+        <div>PARTICLES: <span class="hud-value">12000</span></div>
+    </div>
+    <div class="hud top-right">
+        <div>SYSTEM: <span class="hud-value">ONLINE</span></div>
+        <div>MODE: <span id="mode" class="hud-value">IDLE</span></div>
+    </div>
+    <div class="hud bottom-left">
+        <div>L.HAND: <span id="l-hand" class="hud-value">SEARCHING</span></div>
+    </div>
+    <div class="hud bottom-right">
+        <div>R.HAND: <span id="r-hand" class="hud-value">SEARCHING</span></div>
+    </div>
+
+    <div id="overlay"></div>
+    <div id="canvas-container"></div>
+    <video id="video" playsinline></video>
+
+    <!-- Dependencies -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // --- Configuration ---
+        const CONFIG = {
+            particleCount: 12000,
+            particleSize: 2.4,
+            lerpFactor: 0.16,
+            colors: {
+                blue: new THREE.Color(0x00FFFF),
+                yellow: new THREE.Color(0xFFFF00),
+                pink: new THREE.Color(0xFF00FF),
+                green: new THREE.Color(0x00FF88),
+                orange: new THREE.Color(0xFFA500),
+                white: new THREE.Color(0xFFFFFF)
+            },
+            camZ: 1000,
+            repulsionRadius: 100,
+            repulsionStrength: 2000
+        };
+
+        // --- Global State ---
+        let scene, camera, renderer, particles, particleGeometry;
+        let targetPositions = []; // Float32Array
+        let currentColors = []; // Array of colors or Color objects
+        let initialPositions = []; // To reset or use as base
+        
+        // Hand Tracking State
+        let leftHand = null;
+        let rightHand = null;
+        let mode = "IDLE"; // TEXT, NEBULA, CATCH, COMBO
+
+        // --- Initialization ---
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = null; // Transparent background for video feed
+            // scene.fog = new THREE.FogExp2(0x000000, 0.0008);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 5000);
+            camera.position.z = 600;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            // Apply Additive Blending in material, usually no need for special render settings here
+            container.appendChild(renderer.domElement);
+
+            // Particles
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(CONFIG.particleCount * 3);
+            const colors = new Float32Array(CONFIG.particleCount * 3);
+            
+            targetPositions = new Float32Array(CONFIG.particleCount * 3);
+            
+            // Init random positions
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 1000;
+                const z = (Math.random() - 0.5) * 1000;
+                
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                targetPositions[i * 3] = x;
+                targetPositions[i * 3 + 1] = y;
+                targetPositions[i * 3 + 2] = z; // z flat for text essentially
+                
+                colors[i * 3] = 0;
+                colors[i * 3 + 1] = 1;
+                colors[i * 3 + 2] = 1;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: CONFIG.particleSize,
+                vertexColors: true,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+                transparent: true,
+                opacity: 0.9
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Start Animation Loop
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            // Regenerate text targets based on new screen ratio if needed? 
+            // For now, let's keep text centered.
+        }
+
+        // --- Text & Shape Generation ---
+
+        function generateTextTargets(text, color) {
+            // Use a canvas to draw text and sample pixels
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.font = 'bold 150px "Arial", sans-serif'; // Larger font for better sampling
+            ctx.fillStyle = '#FFFFFF';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, width / 2, height / 2);
+
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            
+            const validPixels = [];
+            // Sample with step to reduce density
+            const step = 4; 
+            for (let y = 0; y < height; y += step) {
+                for (let x = 0; x < width; x += step) {
+                    const index = (y * width + x) * 4;
+                    if (data[index] > 128) { // If pixel is bright
+                        validPixels.push({
+                            x: (x - width / 2) * 1.5, // Scale up slightly to fill 3D space
+                            y: -(y - height / 2) * 1.5, // Invert Y for 3D
+                            z: 0
+                        });
+                    }
+                }
+            }
+
+            updateTargets(validPixels, color, false);
+        }
+
+        function generateNebulaTargets() {
+            const count = CONFIG.particleCount;
+            // Random scatter filling the screen space
+            const w = window.innerWidth * 1.5;
+            const h = window.innerHeight * 1.5;
+            const d = 1000;
+
+            for (let i = 0; i < count; i++) {
+                targetPositions[i * 3] = (Math.random() - 0.5) * w;
+                targetPositions[i * 3 + 1] = (Math.random() - 0.5) * h;
+                targetPositions[i * 3 + 2] = (Math.random() - 0.5) * d;
+            }
+            // No strict single color update here, keep previous or fade? 
+            // Prompt doesn't specify color change for Nebula, just "Interact". Let's keep it cool Blue/White mix maybe?
+            // Actually prompt says "Particles scatter". Let's update color to White/Cyan mix.
+             updateColors(CONFIG.colors.white);
+        }
+        
+        function generateBallTargets(handPosition) {
+            // Fibonacci Sphere attached to Left Hand
+            const count = CONFIG.particleCount;
+            const radius = 150;
+            const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle
+
+            for (let i = 0; i < count; i++) {
+                const y = 1 - (i / (count - 1)) * 2; // y goes from 1 to -1
+                const radiusAtY = Math.sqrt(1 - y * y); // Radius at y
+                const theta = phi * i;
+
+                const x = Math.cos(theta) * radiusAtY;
+                const z = Math.sin(theta) * radiusAtY;
+
+                // Rotate it a bit over time requires updating in loop, 
+                // but here set BASE target relative to 0,0,0. 
+                // Actual position will be offset by Hand Position + Rotation in animation loop.
+                // We will store local sphere coordinates in targetPositions for now, 
+                // BUT logic needs to know they are relative.
+                // To simplify, let's just calc absolute targets here, but the rotation won't happen unless we update targets every frame.
+                // Strategy: In Loop, if mode is COMBO, we calculate the dynamic target.
+                // So here, we just flag mode.
+            }
+        }
+
+        function updateTargets(validPixels, color, isRandomFill = false) {
+            const count = CONFIG.particleCount;
+            const validCount = validPixels.length;
+            
+            for (let i = 0; i < count; i++) {
+                let pixel;
+                if (isRandomFill) {
+                   // Handled by specialized generators usually
+                } else {
+                    if (validCount > 0) {
+                        // If we have more particles than pixels, reuse pixels randomly or cycle
+                        pixel = validPixels[i % validCount];
+                    } else {
+                        pixel = { x: 0, y: 0, z: 0 };
+                    }
+                }
+
+                targetPositions[i * 3] = pixel.x;
+                targetPositions[i * 3 + 1] = pixel.y;
+                targetPositions[i * 3 + 2] = pixel.z;
+            }
+            
+            if (color) updateColors(color);
+        }
+
+        function updateColors(colorObj) {
+            const colors = particles.geometry.attributes.color.array;
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                colors[i * 3] = colorObj.r;
+                colors[i * 3 + 1] = colorObj.g;
+                colors[i * 3 + 2] = colorObj.b;
+            }
+            particles.geometry.attributes.color.needsUpdate = true;
+        }
+
+
+        // --- Hand Logic & MediaPipe ---
+        
+        const videoElement = document.getElementById('video');
+
+        function onResults(results) {
+            leftHand = null;
+            rightHand = null;
+
+            if (results.multiHandLandmarks) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const classification = results.multiHandedness[i].label; // "Left" or "Right"
+                    
+                    // MediaPipe "Left" is usually the person's left hand (on screen right if mirrored? No, usually self-perspective if standard).
+                    // Actually standard webcam mirror: "Left" label is your Right hand visually if untransformed.
+                    // But usually we just trust the label or flip logic.
+                    // Let's assume standard webcam mirror behavior:
+                    // If label says "Left", it's the actor's Left hand.
+                    
+                    const fingerCount = countFingers(landmarks);
+                    const handData = { landmarks, fingerCount, i };
+
+                    if (classification === 'Left') leftHand = handData;
+                    if (classification === 'Right') rightHand = handData;
+                }
+            }
+
+            updateStateMachine();
+        }
+        
+        function countFingers(landmarks) {
+            let count = 0;
+            
+            // Index (8), Middle (12), Ring (16), Pinky (20) - check Y against PIP (6, 10, 14, 18)
+            // Note: Canvas Y is 0 at top, 1 at bottom. So tip < pip means finger is UP.
+            if (landmarks[8].y < landmarks[6].y) count++;
+            if (landmarks[12].y < landmarks[10].y) count++;
+            if (landmarks[16].y < landmarks[14].y) count++;
+            if (landmarks[20].y < landmarks[18].y) count++;
+            
+            // Thumb (4) Logic fix:
+            // Check distance from Thumb Tip (4) to Index MCP (5).
+            // Compare it to scale of hand (Wrist 0 to Index MCP 5).
+            // If thumb is tucked, tip is close to Index MCP. If extended, it's far.
+            
+            const wrist = landmarks[0];
+            const indexMCP = landmarks[5];
+            const thumbTip = landmarks[4];
+            
+            const scale = Math.hypot(indexMCP.x - wrist.x, indexMCP.y - wrist.y);
+            const thumbDist = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
+            
+            // Threshold: 0.5 times the palm length usually separates tucked vs extended well
+            if (thumbDist > scale * 0.5) count++;
+
+            return count;
+        }
+
+        // --- Interaction Logic State Machine ---
+        let currentState = "IDLE"; 
+        
+        function updateStateMachine() {
+            // HUD Update
+            document.getElementById('l-hand').innerText = leftHand ? `Target: ${leftHand.fingerCount}` : "OFFLINE";
+            document.getElementById('r-hand').innerText = rightHand ? `Phys: ${rightHand.fingerCount}` : "OFFLINE";
+
+            // Determine Left Hand Command
+            if (leftHand) {
+                // Determine Interaction Mode
+                // Check for COMBO first
+                if (leftHand.fingerCount === 5 && rightHand && rightHand.fingerCount === 5) {
+                    if (currentState !== "COMBO") {
+                        currentState = "COMBO";
+                        document.getElementById('mode').innerText = "ULTIMATE COMBO";
+                        document.getElementById('mode').style.color = "#FFA500";
+                    }
+                    return; // Combo overrides others
+                }
+
+                if (leftHand.fingerCount === 5) {
+                    if (currentState !== "CATCH") {
+                        currentState = "CATCH";
+                        document.getElementById('mode').innerText = "CATCH MODE";
+                        document.getElementById('mode').style.color = "#00FFFF";
+                        // Target is dynamically the palm, handled in animate loop
+                        updateColors(CONFIG.colors.blue);
+                    }
+                } else {
+                    // Text Modes
+                    let text = "";
+                    let color = CONFIG.colors.white;
+                    let newState = "TEXT_" + leftHand.fingerCount;
+
+                    if (currentState !== newState) {
+                        currentState = newState;
+                        switch(leftHand.fingerCount) {
+                            case 1: 
+                                text = "Hello"; 
+                                color = CONFIG.colors.blue; 
+                                break;
+                            case 2: 
+                                text = "David888"; 
+                                color = CONFIG.colors.yellow; 
+                                break;
+                            case 3: 
+                                text = "我愛你"; 
+                                color = CONFIG.colors.pink; 
+                                break;
+                            case 4: 
+                                text = "再見"; 
+                                color = CONFIG.colors.green; 
+                                break;
+                            default:
+                                // 0 or thumb only?
+                                text = "READY";
+                                color = CONFIG.colors.white;
+                        }
+                        
+                        document.getElementById('mode').innerText = "TEXT: " + text;
+                        document.getElementById('mode').style.color = "#" + color.getHexString();
+                        generateTextTargets(text, color);
+                    }
+                }
+            }
+
+            // Right Hand Nebula Check (Only if not in Combo)
+            if (currentState !== "COMBO" && rightHand) {
+                 if (rightHand.fingerCount === 5) {
+                     // Nebula Mode
+                     // If Left is not controlling text/catch (or Left is absent). 
+                     // Priority: Left Hand dictates shape usually. But Prompt says Right Open = Nebula Mode.
+                     // "Trigger: Nebula Mode. Particles scatter to fill..."
+                     // Does this override Left Hand Text? Assumed YES if it scatters everything.
+                     if (currentState !== "NEBULA") {
+                         currentState = "NEBULA";
+                         document.getElementById('mode').innerText = "NEBULA MODE";
+                         generateNebulaTargets();
+                     }
+                 } else if (currentState === "NEBULA") {
+                     // Exit Nebula
+                     currentState = "IDLE";
+                     if (leftHand) {
+                         // Re-evaluate left hand immediately
+                         updateStateMachine(); 
+                     } else {
+                         generateTextTargets("...", CONFIG.colors.white);
+                     }
+                 }
+            }
+        }
+
+
+        // --- Main Animation Loop ---
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update FPS
+            const delta = clock.getDelta();
+            document.getElementById('fps').innerText = Math.round(1 / delta);
+            
+            const time = clock.getElapsedTime();
+
+            if (!particles) return;
+
+            const positions = particles.geometry.attributes.position.array;
+            
+            // --- Logic per Frame ---
+            
+            // Map Hand Coordinates to 3D World
+            // Screen: w/h. MediaPipe: 0-1.
+            // 3D Plane at z=0 approx width 2400 (based on camera z 600 and fov 75? No, tan(37.5)*600*2 ~= 900 height. width ~1600.)
+            // Calculations:
+            const vFOV = THREE.MathUtils.degToRad(camera.fov);
+            const heightAtZ0 = 2 * Math.tan(vFOV / 2) * camera.position.z;
+            const widthAtZ0 = heightAtZ0 * camera.aspect;
+
+            const getVector = (landmark) => {
+                // Landmark x is 0-1 (left to right), y 0-1 (top to bottom)
+                // 3D x: -(l.x - 0.5) * width  (Negated X to match CSS mirror transform)
+                // 3D y: -(l.y - 0.5) * height
+                return new THREE.Vector3(
+                    -(landmark.x - 0.5) * widthAtZ0,
+                    -(landmark.y - 0.5) * heightAtZ0,
+                    0
+                );
+            };
+
+            let rightIndexPos = null;
+            let rightHandPos = null;
+            let leftHandPos = null;
+
+            if (rightHand) {
+                // Index Tip is 8
+                rightIndexPos = getVector(rightHand.landmarks[8]);
+                rightHandPos = getVector(rightHand.landmarks[9]); // Middle finger mcp as center
+            }
+            if (leftHand) {
+                leftHandPos = getVector(leftHand.landmarks[9]); // Palm center approx
+            }
+
+            // --- Particle Physics Update ---
+
+            const count = CONFIG.particleCount;
+            
+            // Dynamic Target Calculations (Combo / Catch)
+            let comboCenter = leftHandPos ? leftHandPos : new THREE.Vector3();
+            let sphereTimeRot = time * 2;
+            
+            for (let i = 0; i < count; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                let tx, ty, tz;
+
+                // 1. Determine Target
+                if (currentState === "COMBO") {
+                    // Rotating Sphere at Left Hand
+                    const phi = Math.PI * (3 - Math.sqrt(5));
+                    const y = 1 - (i / (count - 1)) * 2; 
+                    const radius = 220; // Slightly larger for impact
+                    const rY = Math.sqrt(1 - y * y);
+                    
+                    // Calculate "Static" sphere coordinates (attached to the ball mesh conceptually)
+                    const thetaBase = phi * i;
+                    
+                    // Apply Rotation to the whole ball over time
+                    const theta = thetaBase + sphereTimeRot; 
+
+                    // Local coords
+                    const lx = Math.cos(theta) * rY * radius;
+                    const ly = y * radius;
+                    const lz = Math.sin(theta) * rY * radius;
+
+                    // Heartbeat / Pulse Effect
+                    const beat = 1 + Math.sin(time * 15) * 0.03;
+                    
+                    // Bounce Effect (High frequency Y-axis jitter)
+                    const bounce = Math.sin(time * 20 + i * 0.1) * 15;
+
+                    tx = comboCenter.x + lx * beat;
+                    ty = comboCenter.y + ly * beat + bounce;
+                    tz = comboCenter.z + lz * beat;
+                    
+                    // Coloring: Create "Basketball-like" ribs
+                    // Texture must rotate with the ball (based on thetaBase and y)
+                    const cols = particles.geometry.attributes.color.array;
+                    
+                    // Rib 1: Equator
+                    const isEquator = Math.abs(y) < 0.08;
+                    // Rib 2: Longitudinal Ring (creates a cross with equator)
+                    const isMeridian = Math.abs(Math.cos(thetaBase)) < 0.08;
+                    // Rib 3: The "S" Curve approximation (Sinewave wrapped around)
+                    const isCurve = Math.abs(Math.sin(thetaBase + Math.PI/2) - y*1.5) < 0.15;
+
+                    // Combine lines
+                    const isLine = isEquator || isMeridian || isCurve;
+
+                    if (isLine) {
+                        // Black Ribs
+                        cols[ix] = 0.1; cols[iy] = 0.1; cols[iz] = 0.1;
+                    } else {
+                        // Glowing Orange Body
+                        // Add slight flicker/gradient
+                        const hueVar = (Math.sin(thetaBase * 5) + 1) * 0.1; // Slight variation
+                        cols[ix] = 1; 
+                        cols[iy] = 0.4 + hueVar; // Deep Orange to Yellow-Orange
+                        cols[iz] = 0; 
+                    }
+
+                } else if (currentState === "CATCH" && leftHandPos) {
+                    // All particles to left hand center
+                    tx = leftHandPos.x;
+                    ty = leftHandPos.y;
+                    tz = leftHandPos.z;
+                    // Add some noise so they don't collapse to a singularity
+                    tx += (Math.random() - 0.5) * 100;
+                    ty += (Math.random() - 0.5) * 100;
+                    tz += (Math.random() - 0.5) * 100;
+                } else {
+                    // Standard stored targets (Text or Nebula)
+                    tx = targetPositions[ix];
+                    ty = targetPositions[iy];
+                    tz = targetPositions[iz];
+                }
+
+                // 2. Physics / Interaction
+
+                // Current Pos
+                let cx = positions[ix];
+                let cy = positions[iy];
+                let cz = positions[iz];
+
+                // Lerp towards target
+                // "Fast return speed (lerp factor 0.16)"
+                cx += (tx - cx) * CONFIG.lerpFactor;
+                cy += (ty - cy) * CONFIG.lerpFactor;
+                cz += (tz - cz) * CONFIG.lerpFactor;
+
+                // Right Hand Interaction
+                if (rightHand) {
+                    if (currentState === "NEBULA") {
+                        // "Water Ripple" (sine wave) when hand moves
+                        // Calculate distance to hand center
+                        const dist = Math.sqrt((cx - rightHandPos.x)**2 + (cy - rightHandPos.y)**2);
+                        if (dist < 300) {
+                            const ripple = Math.sin(dist * 0.05 - time * 10) * 20;
+                            cz += ripple; 
+                        }
+                    } else {
+                        // Pointing/Fist: State A
+                        // "Pure planar repulsion (XY axis). Do NOT apply Z-axis bulge"
+                        // Interactive Point: rightIndexPos
+                        if (rightIndexPos) {
+                            const dx = cx - rightIndexPos.x;
+                            const dy = cy - rightIndexPos.y;
+                            const distSq = dx*dx + dy*dy;
+                            const radiusSq = 200 * 200; // Strong interaction radius
+
+                            if (distSq < radiusSq && distSq > 0) {
+                                const dist = Math.sqrt(distSq);
+                                const force = (1 - dist / 200) * 50; // Strong kick
+                                const angle = Math.atan2(dy, dx);
+                                
+                                cx += Math.cos(angle) * force;
+                                cy += Math.sin(angle) * force;
+                                // z unchanged
+                            }
+                        }
+                    }
+                }
+
+                positions[ix] = cx;
+                positions[iy] = cy;
+                positions[iz] = cz;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+            if (currentState === "COMBO") particles.geometry.attributes.color.needsUpdate = true;
+
+            renderer.render(scene, camera);
+        }
+
+
+        // --- MediaPipe Setup ---
+        
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        
+        hands.onResults(onResults);
+        
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+        
+        cameraUtils.start();
+
+        // Start Three.js
+        initThree();
+
+    </script>
+</body>
+</html>
