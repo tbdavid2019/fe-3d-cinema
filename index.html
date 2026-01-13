@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cyberpunk Particle System</title>
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    
+
     <style>
         body {
             margin: 0;
@@ -33,8 +34,8 @@
             width: 100%;
             height: 100%;
             z-index: 2;
-            background: 
-                radial-gradient(circle, transparent 60%, rgba(0,0,0,0.8) 100%),
+            background:
+                radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.8) 100%),
                 linear-gradient(to bottom, rgba(0, 255, 255, 0.03) 1px, transparent 1px),
                 linear-gradient(to right, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
             background-size: 100% 100%, 40px 40px, 40px 40px;
@@ -50,11 +51,28 @@
             text-shadow: 0 0 5px #0ff;
             pointer-events: none;
         }
-        
-        .top-left { top: 0; left: 0; }
-        .top-right { top: 0; right: 0; text-align: right; }
-        .bottom-left { bottom: 0; left: 0; }
-        .bottom-right { bottom: 0; right: 0; text-align: right; }
+
+        .top-left {
+            top: 0;
+            left: 0;
+        }
+
+        .top-right {
+            top: 0;
+            right: 0;
+            text-align: right;
+        }
+
+        .bottom-left {
+            bottom: 0;
+            left: 0;
+        }
+
+        .bottom-right {
+            bottom: 0;
+            right: 0;
+            text-align: right;
+        }
 
         .hud-value {
             font-weight: bold;
@@ -70,10 +88,12 @@
             object-fit: cover;
             z-index: 0;
             transform: scaleX(-1);
-            opacity: 0.5; /* Darken slightly to keep particles visible */
+            opacity: 0.5;
+            /* Darken slightly to keep particles visible */
         }
     </style>
 </head>
+
 <body>
 
     <!-- HUD -->
@@ -99,8 +119,10 @@
     <!-- Dependencies -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+        crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
     <script>
@@ -127,7 +149,7 @@
         let targetPositions = []; // Float32Array
         let currentColors = []; // Array of colors or Color objects
         let initialPositions = []; // To reset or use as base
-        
+
         // Hand Tracking State
         let leftHand = null;
         let rightHand = null;
@@ -137,7 +159,7 @@
 
         function initThree() {
             const container = document.getElementById('canvas-container');
-            
+
             scene = new THREE.Scene();
             scene.background = null; // Transparent background for video feed
             // scene.fog = new THREE.FogExp2(0x000000, 0.0008);
@@ -155,15 +177,15 @@
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(CONFIG.particleCount * 3);
             const colors = new Float32Array(CONFIG.particleCount * 3);
-            
+
             targetPositions = new Float32Array(CONFIG.particleCount * 3);
-            
+
             // Init random positions
             for (let i = 0; i < CONFIG.particleCount; i++) {
                 const x = (Math.random() - 0.5) * 2000;
                 const y = (Math.random() - 0.5) * 1000;
                 const z = (Math.random() - 0.5) * 1000;
-                
+
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
@@ -171,7 +193,7 @@
                 targetPositions[i * 3] = x;
                 targetPositions[i * 3 + 1] = y;
                 targetPositions[i * 3 + 2] = z; // z flat for text essentially
-                
+
                 colors[i * 3] = 0;
                 colors[i * 3 + 1] = 1;
                 colors[i * 3 + 2] = 1;
@@ -193,7 +215,7 @@
             scene.add(particles);
 
             window.addEventListener('resize', onWindowResize, false);
-            
+
             // Start Animation Loop
             animate();
         }
@@ -219,7 +241,7 @@
 
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
-            
+
             ctx.font = 'bold 150px "Arial", sans-serif'; // Larger font for better sampling
             ctx.fillStyle = '#FFFFFF';
             ctx.textAlign = 'center';
@@ -228,10 +250,10 @@
 
             const imageData = ctx.getImageData(0, 0, width, height);
             const data = imageData.data;
-            
+
             const validPixels = [];
             // Sample with step to reduce density
-            const step = 4; 
+            const step = 4;
             for (let y = 0; y < height; y += step) {
                 for (let x = 0; x < width; x += step) {
                     const index = (y * width + x) * 4;
@@ -263,9 +285,9 @@
             // No strict single color update here, keep previous or fade? 
             // Prompt doesn't specify color change for Nebula, just "Interact". Let's keep it cool Blue/White mix maybe?
             // Actually prompt says "Particles scatter". Let's update color to White/Cyan mix.
-             updateColors(CONFIG.colors.white);
+            updateColors(CONFIG.colors.white);
         }
-        
+
         function generateBallTargets(handPosition) {
             // Fibonacci Sphere attached to Left Hand
             const count = CONFIG.particleCount;
@@ -294,11 +316,11 @@
         function updateTargets(validPixels, color, isRandomFill = false) {
             const count = CONFIG.particleCount;
             const validCount = validPixels.length;
-            
+
             for (let i = 0; i < count; i++) {
                 let pixel;
                 if (isRandomFill) {
-                   // Handled by specialized generators usually
+                    // Handled by specialized generators usually
                 } else {
                     if (validCount > 0) {
                         // If we have more particles than pixels, reuse pixels randomly or cycle
@@ -312,7 +334,7 @@
                 targetPositions[i * 3 + 1] = pixel.y;
                 targetPositions[i * 3 + 2] = pixel.z;
             }
-            
+
             if (color) updateColors(color);
         }
 
@@ -328,7 +350,7 @@
 
 
         // --- Hand Logic & MediaPipe ---
-        
+
         const videoElement = document.getElementById('video');
 
         function onResults(results) {
@@ -339,13 +361,13 @@
                 for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                     const landmarks = results.multiHandLandmarks[i];
                     const classification = results.multiHandedness[i].label; // "Left" or "Right"
-                    
+
                     // MediaPipe "Left" is usually the person's left hand (on screen right if mirrored? No, usually self-perspective if standard).
                     // Actually standard webcam mirror: "Left" label is your Right hand visually if untransformed.
                     // But usually we just trust the label or flip logic.
                     // Let's assume standard webcam mirror behavior:
                     // If label says "Left", it's the actor's Left hand.
-                    
+
                     const fingerCount = countFingers(landmarks);
                     const handData = { landmarks, fingerCount, i };
 
@@ -356,29 +378,29 @@
 
             updateStateMachine();
         }
-        
+
         function countFingers(landmarks) {
             let count = 0;
-            
+
             // Index (8), Middle (12), Ring (16), Pinky (20) - check Y against PIP (6, 10, 14, 18)
             // Note: Canvas Y is 0 at top, 1 at bottom. So tip < pip means finger is UP.
             if (landmarks[8].y < landmarks[6].y) count++;
             if (landmarks[12].y < landmarks[10].y) count++;
             if (landmarks[16].y < landmarks[14].y) count++;
             if (landmarks[20].y < landmarks[18].y) count++;
-            
+
             // Thumb (4) Logic fix:
             // Check distance from Thumb Tip (4) to Index MCP (5).
             // Compare it to scale of hand (Wrist 0 to Index MCP 5).
             // If thumb is tucked, tip is close to Index MCP. If extended, it's far.
-            
+
             const wrist = landmarks[0];
             const indexMCP = landmarks[5];
             const thumbTip = landmarks[4];
-            
+
             const scale = Math.hypot(indexMCP.x - wrist.x, indexMCP.y - wrist.y);
             const thumbDist = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
-            
+
             // Threshold: 0.5 times the palm length usually separates tucked vs extended well
             if (thumbDist > scale * 0.5) count++;
 
@@ -386,8 +408,8 @@
         }
 
         // --- Interaction Logic State Machine ---
-        let currentState = "IDLE"; 
-        
+        let currentState = "IDLE";
+
         function updateStateMachine() {
             // HUD Update
             document.getElementById('l-hand').innerText = leftHand ? `Target: ${leftHand.fingerCount}` : "OFFLINE";
@@ -396,14 +418,14 @@
             // Determine Left Hand Command
             if (leftHand) {
                 // Determine Interaction Mode
-                // Check for COMBO first
+                // Combo Mode: Both hands open
                 if (leftHand.fingerCount === 5 && rightHand && rightHand.fingerCount === 5) {
                     if (currentState !== "COMBO") {
                         currentState = "COMBO";
-                        document.getElementById('mode').innerText = "ULTIMATE COMBO";
+                        document.getElementById('mode').innerText = "ULTIMATE COMBO"; // Revert text to standard
                         document.getElementById('mode').style.color = "#FFA500";
                     }
-                    return; // Combo overrides others
+                    return;
                 }
 
                 if (leftHand.fingerCount === 5) {
@@ -422,29 +444,29 @@
 
                     if (currentState !== newState) {
                         currentState = newState;
-                        switch(leftHand.fingerCount) {
-                            case 1: 
-                                text = "Hello"; 
-                                color = CONFIG.colors.blue; 
+                        switch (leftHand.fingerCount) {
+                            case 1:
+                                text = "Hello";
+                                color = CONFIG.colors.blue;
                                 break;
-                            case 2: 
-                                text = "David888"; 
-                                color = CONFIG.colors.yellow; 
+                            case 2:
+                                text = "David888";
+                                color = CONFIG.colors.yellow;
                                 break;
-                            case 3: 
-                                text = "我愛你"; 
-                                color = CONFIG.colors.pink; 
+                            case 3:
+                                text = "我愛你";
+                                color = CONFIG.colors.pink;
                                 break;
-                            case 4: 
-                                text = "再見"; 
-                                color = CONFIG.colors.green; 
+                            case 4:
+                                text = "再見";
+                                color = CONFIG.colors.green;
                                 break;
                             default:
                                 // 0 or thumb only?
                                 text = "READY";
                                 color = CONFIG.colors.white;
                         }
-                        
+
                         document.getElementById('mode').innerText = "TEXT: " + text;
                         document.getElementById('mode').style.color = "#" + color.getHexString();
                         generateTextTargets(text, color);
@@ -454,27 +476,27 @@
 
             // Right Hand Nebula Check (Only if not in Combo)
             if (currentState !== "COMBO" && rightHand) {
-                 if (rightHand.fingerCount === 5) {
-                     // Nebula Mode
-                     // If Left is not controlling text/catch (or Left is absent). 
-                     // Priority: Left Hand dictates shape usually. But Prompt says Right Open = Nebula Mode.
-                     // "Trigger: Nebula Mode. Particles scatter to fill..."
-                     // Does this override Left Hand Text? Assumed YES if it scatters everything.
-                     if (currentState !== "NEBULA") {
-                         currentState = "NEBULA";
-                         document.getElementById('mode').innerText = "NEBULA MODE";
-                         generateNebulaTargets();
-                     }
-                 } else if (currentState === "NEBULA") {
-                     // Exit Nebula
-                     currentState = "IDLE";
-                     if (leftHand) {
-                         // Re-evaluate left hand immediately
-                         updateStateMachine(); 
-                     } else {
-                         generateTextTargets("...", CONFIG.colors.white);
-                     }
-                 }
+                if (rightHand.fingerCount === 5) {
+                    // Nebula Mode
+                    // If Left is not controlling text/catch (or Left is absent). 
+                    // Priority: Left Hand dictates shape usually. But Prompt says Right Open = Nebula Mode.
+                    // "Trigger: Nebula Mode. Particles scatter to fill..."
+                    // Does this override Left Hand Text? Assumed YES if it scatters everything.
+                    if (currentState !== "NEBULA") {
+                        currentState = "NEBULA";
+                        document.getElementById('mode').innerText = "NEBULA MODE";
+                        generateNebulaTargets();
+                    }
+                } else if (currentState === "NEBULA") {
+                    // Exit Nebula
+                    currentState = "IDLE";
+                    if (leftHand) {
+                        // Re-evaluate left hand immediately
+                        updateStateMachine();
+                    } else {
+                        generateTextTargets("...", CONFIG.colors.white);
+                    }
+                }
             }
         }
 
@@ -489,15 +511,15 @@
             // Update FPS
             const delta = clock.getDelta();
             document.getElementById('fps').innerText = Math.round(1 / delta);
-            
+
             const time = clock.getElapsedTime();
 
             if (!particles) return;
 
             const positions = particles.geometry.attributes.position.array;
-            
+
             // --- Logic per Frame ---
-            
+
             // Map Hand Coordinates to 3D World
             // Screen: w/h. MediaPipe: 0-1.
             // 3D Plane at z=0 approx width 2400 (based on camera z 600 and fov 75? No, tan(37.5)*600*2 ~= 900 height. width ~1600.)
@@ -533,11 +555,11 @@
             // --- Particle Physics Update ---
 
             const count = CONFIG.particleCount;
-            
+
             // Dynamic Target Calculations (Combo / Catch)
             let comboCenter = leftHandPos ? leftHandPos : new THREE.Vector3();
             let sphereTimeRot = time * 2;
-            
+
             for (let i = 0; i < count; i++) {
                 const ix = i * 3;
                 const iy = i * 3 + 1;
@@ -549,15 +571,13 @@
                 if (currentState === "COMBO") {
                     // Rotating Sphere at Left Hand
                     const phi = Math.PI * (3 - Math.sqrt(5));
-                    const y = 1 - (i / (count - 1)) * 2; 
-                    const radius = 220; // Slightly larger for impact
+                    const y = 1 - (i / (count - 1)) * 2;
+                    const radius = 280; // Adjusted to be "Basketball sized" (not too big, not too small)
                     const rY = Math.sqrt(1 - y * y);
-                    
-                    // Calculate "Static" sphere coordinates (attached to the ball mesh conceptually)
+
+                    // Standard rotation
                     const thetaBase = phi * i;
-                    
-                    // Apply Rotation to the whole ball over time
-                    const theta = thetaBase + sphereTimeRot; 
+                    const theta = thetaBase + sphereTimeRot;
 
                     // Local coords
                     const lx = Math.cos(theta) * rY * radius;
@@ -566,24 +586,24 @@
 
                     // Heartbeat / Pulse Effect
                     const beat = 1 + Math.sin(time * 15) * 0.03;
-                    
-                    // Bounce Effect (High frequency Y-axis jitter)
-                    const bounce = Math.sin(time * 20 + i * 0.1) * 15;
+
+                    // Bounce Trajectory as per Prompt: "Bouncing/Jumping trajectory (high-frequency Y-axis sine wave)"
+                    // This creates the "energetic bouncing beads" look
+                    const bounce = Math.sin(time * 10 + i) * 20;
 
                     tx = comboCenter.x + lx * beat;
                     ty = comboCenter.y + ly * beat + bounce;
                     tz = comboCenter.z + lz * beat;
-                    
-                    // Coloring: Create "Basketball-like" ribs
-                    // Texture must rotate with the ball (based on thetaBase and y)
+
+                    // Coloring: Orange Basketball with Black lines
                     const cols = particles.geometry.attributes.color.array;
-                    
+
                     // Rib 1: Equator
                     const isEquator = Math.abs(y) < 0.08;
                     // Rib 2: Longitudinal Ring (creates a cross with equator)
                     const isMeridian = Math.abs(Math.cos(thetaBase)) < 0.08;
                     // Rib 3: The "S" Curve approximation (Sinewave wrapped around)
-                    const isCurve = Math.abs(Math.sin(thetaBase + Math.PI/2) - y*1.5) < 0.15;
+                    const isCurve = Math.abs(Math.sin(thetaBase + Math.PI / 2) - y * 1.5) < 0.15;
 
                     // Combine lines
                     const isLine = isEquator || isMeridian || isCurve;
@@ -595,9 +615,9 @@
                         // Glowing Orange Body
                         // Add slight flicker/gradient
                         const hueVar = (Math.sin(thetaBase * 5) + 1) * 0.1; // Slight variation
-                        cols[ix] = 1; 
+                        cols[ix] = 1;
                         cols[iy] = 0.4 + hueVar; // Deep Orange to Yellow-Orange
-                        cols[iz] = 0; 
+                        cols[iz] = 0;
                     }
 
                 } else if (currentState === "CATCH" && leftHandPos) {
@@ -634,10 +654,10 @@
                     if (currentState === "NEBULA") {
                         // "Water Ripple" (sine wave) when hand moves
                         // Calculate distance to hand center
-                        const dist = Math.sqrt((cx - rightHandPos.x)**2 + (cy - rightHandPos.y)**2);
+                        const dist = Math.sqrt((cx - rightHandPos.x) ** 2 + (cy - rightHandPos.y) ** 2);
                         if (dist < 300) {
                             const ripple = Math.sin(dist * 0.05 - time * 10) * 20;
-                            cz += ripple; 
+                            cz += ripple;
                         }
                     } else {
                         // Pointing/Fist: State A
@@ -646,14 +666,14 @@
                         if (rightIndexPos) {
                             const dx = cx - rightIndexPos.x;
                             const dy = cy - rightIndexPos.y;
-                            const distSq = dx*dx + dy*dy;
+                            const distSq = dx * dx + dy * dy;
                             const radiusSq = 200 * 200; // Strong interaction radius
 
                             if (distSq < radiusSq && distSq > 0) {
                                 const dist = Math.sqrt(distSq);
                                 const force = (1 - dist / 200) * 50; // Strong kick
                                 const angle = Math.atan2(dy, dx);
-                                
+
                                 cx += Math.cos(angle) * force;
                                 cy += Math.sin(angle) * force;
                                 // z unchanged
@@ -675,28 +695,30 @@
 
 
         // --- MediaPipe Setup ---
-        
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-        
+
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
         hands.setOptions({
             maxNumHands: 2,
             modelComplexity: 1,
             minDetectionConfidence: 0.7,
             minTrackingConfidence: 0.7
         });
-        
+
         hands.onResults(onResults);
-        
+
         const cameraUtils = new Camera(videoElement, {
             onFrame: async () => {
-                await hands.send({image: videoElement});
+                await hands.send({ image: videoElement });
             },
             width: 1280,
             height: 720
         });
-        
+
         cameraUtils.start();
 
         // Start Three.js
@@ -704,4 +726,5 @@
 
     </script>
 </body>
+
 </html>

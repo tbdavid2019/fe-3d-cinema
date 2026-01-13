@@ -1,6 +1,9 @@
 # Cyberpunk 3D Particle Interaction System
 (賽博龐克 3D 粒子互動系統)
 
+右手控制文字/Catch，左手控制 Nebula/Physics，雙手 Open 召喚大火球
+
+
 這是一個基於 WebGL 與電腦視覺技術的單頁式網頁應用程式。透過 Webcam 捕捉手部動作，即時與畫面中的 12,000 個 3D 粒子進行互動。
 
 ![Style](https://img.shields.io/badge/Style-Cyberpunk-00ffff)
